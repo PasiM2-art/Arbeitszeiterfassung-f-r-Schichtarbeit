@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arbeitszeit Erfassung</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 10px;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        h1 {
+            text-align: center;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background-color: #f0f0f0;
+            font-size: 0.9rem;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: center;
+        }
+        th {
+            background-color: #add8e6;
+            font-size: 1rem;
+        }
+        tbody tr:nth-child(even) {
+            background-color: #f4f4f4;
+        }
+        tbody tr td:first-child {
+            font-weight: bold;
+        }
+        tbody tr td:nth-child(1) {
+            background-color: #add8e6;
+        }
+        tbody tr:nth-child(7n+1),
+        tbody tr:nth-child(7n),
+        tbody tr:nth-child(7n+1) td,
+        tbody tr:nth-child(7n) td {
+            background-color: #4682b4;
+            color: white;
+        }
+        .summary {
+            margin-top: 15px;
+            font-weight: bold;
+            text-align: center;
+        }
+        button {
+            display: block;
+            margin: 15px auto;
+            padding: 10px 20px;
+            font-size: 1rem;
+            background-color: #4682b4;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #315f86;
+        }
+        @media (max-width: 768px) {
+            table {
+                font-size: 0.8rem;
+            }
+            th, td {
+                padding: 5px;
+            }
+            button {
+                font-size: 0.9rem;
+                padding: 8px 15px;
+            }
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Arbeitszeit Erfassung</h1>
+    <div class="table-container">
+        <table>
+            <thead>
+                <tr>
+                    <th>Wochentag</th>
+                    <th>Schicht</th>
+                    <th>Arbeitsbeginn (hh:mm)</th>
+                    <th>Feierabend (hh:mm)</th>
+                    <th>Tatsächliche Arbeitszeit (Stunden)</th>
+                    <th>Option</th>
+                    <th>AZK-Zeit (in Stunden)</th>
+                </tr>
+            </thead>
+            <tbody id="table-body">
+                <!-- Dynamischer Inhalt wird hier eingefügt -->
+            </tbody>
+        </table>
+    </div>
+    <button onclick="calculateAZK()">AZK-Zeit Berechnen</button>
+    <div class="summary" id="summary"></div>
+
+    <script>
+        const shifts = {
+            'Frühschicht': { start: '05:45', end: '14:36' },
+            'Normalschicht': { start: '06:30', end: '14:36' },
+            'Spätschicht': { start: '14:30', end: '22:36' },
+            'Nachtschicht': { start: '22:00', end: '06:06' }
+        };
+
+        const REGULAR_WORK_HOURS = 7.6;
+
+        const days = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+        const totalDays = 35;
+
+        const tableBody = document.getElementById('table-body');
+
+        for (let i = 0; i < totalDays; i++) {
+            const row = document.createElement('tr');
+
+            const dayCell = document.createElement('td');
+            dayCell.textContent = days[i % 7];
+
+            const shiftCell = document.createElement('td');
+            const shiftSelect = document.createElement('select');
+            shiftSelect.innerHTML = `<option value="">-- Wählen --</option>` +
+                Object.keys(shifts).map(shift => `<option value="${shift}">${shift}</option>`).join('');
+            shiftCell.appendChild(shiftSelect);
+
+            const startCell = document.createElement('td');
+            const startInput = document.createElement('input');
+            startInput.type = 'time';
+            startCell.appendChild(startInput);
+
+            const endCell = document.createElement('td');
+            const endInput = document.createElement('input');
+            endInput.type = 'time';
+            endCell.appendChild(endInput);
+
+            const actualWorkCell = document.createElement('td');
+            actualWorkCell.textContent = '0';
+
+            const optionCell = document.createElement('td');
+            const optionSelect = document.createElement('select');
+            optionSelect.innerHTML = `
+                <option value="">-- Wählen --</option>
+                <option value="Krank">Krank</option>
+                <option value="AZK Frei">AZK Frei</option>
+                <option value="Urlaub">Urlaub</option>`;
+            optionCell.appendChild(optionSelect);
+
+            const azkCell = document.createElement('td');
+            azkCell.textContent = '0';
+
+            row.appendChild(dayCell);
+            row.appendChild(shiftCell);
+            row.appendChild(startCell);
+            row.appendChild(endCell);
+            row.appendChild(actualWorkCell);
+            row.appendChild(optionCell);
+            row.appendChild(azkCell);
+
+            tableBody.appendChild(row);
+        }
+
+        function calculateTimeDifference(start, end) {
+            const [startHours, startMinutes] = start.split(':').map(Number);
+            const [endHours, endMinutes] = end.split(':').map(Number);
+
+            let startDate = new Date(0, 0, 0, startHours, startMinutes);
+            let endDate = new Date(0, 0, 0, endHours, endMinutes);
+
+            if (endDate < startDate) {
+                endDate.setDate(endDate.getDate() + 1);
+            }
+
+            const diff = (endDate - startDate) / (1000 * 60 * 60);
+            return diff;
+        }
+
+        function calculateAZK() {
+            let totalAZK = 0;
+
+            Array.from(tableBody.children).forEach(row => {
+                const shift = row.children[1].children[0].value;
+                const start = row.children[2].children[0].value;
+                const end = row.children[3].children[0].value;
+                const actualWorkCell = row.children[4];
+                const option = row.children[5].children[0].value;
+                const azkCell = row.children[6];
+
+                let actualWorkTime = 0;
+                let azkTime = 0;
+
+                if (option === "Krank" || option === "Urlaub") {
+                    actualWorkTime = REGULAR_WORK_HOURS;
+                } else if (option === "AZK Frei") {
+                    actualWorkTime = 0;
+                    azkTime = -REGULAR_WORK_HOURS;
+                } else if (shift && start && end) {
+                    actualWorkTime = calculateTimeDifference(start, end) - 0.5;
+                    const overtime = actualWorkTime - REGULAR_WORK_HOURS;
+                    azkTime = overtime > 0 ? overtime * 1.25 : 0;
+                }
+
+                actualWorkCell.textContent = actualWorkTime.toFixed(2);
+                azkCell.textContent = azkTime.toFixed(2);
+
+                totalAZK += azkTime;
+            });
+
+            document.getElementById('summary').textContent = `Gesamte AZK-Zeit: ${totalAZK.toFixed(2)} Stunden`;
+        }
+    </script>
+</body>
+</html>
